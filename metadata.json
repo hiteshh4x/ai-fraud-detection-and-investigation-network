@@ -2,5 +2,7 @@
   "name": "Apex Security & Ledger",
   "description": "High-contrast institutional fintech ledger, threat intelligence monitor, and deep forensic AI analysis platform.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
