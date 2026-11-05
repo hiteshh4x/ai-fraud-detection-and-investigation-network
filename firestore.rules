@@ -1,0 +1,155 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 1: Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global Hardened Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Blueprint Validation: UserProfile
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'clearanceTier', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'displayName', 'clearanceTier', 'createdAt']) &&
+        data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+        data.uid == request.auth.uid && data.uid == userId &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+        data.clearanceTier is string && data.clearanceTier in ['L1_ANALYST', 'L2_RESPONDER', 'L3_ARCHITECT'] &&
+        data.createdAt is timestamp;
+    }
+
+    // Blueprint Validation: LedgerEntry
+    function isValidLedgerEntry(data) {
+      return data.keys().hasAll([
+          'ownerId', 'txHash', 'blockHeight', 'sourceEntity', 'destinationEntity',
+          'amountUsd', 'assetSymbol', 'riskLevel', 'riskScore', 'status',
+          'threatVector', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'ownerId', 'txHash', 'blockHeight', 'sourceEntity', 'destinationEntity',
+          'amountUsd', 'assetSymbol', 'riskLevel', 'riskScore', 'status',
+          'threatVector', 'createdAt', 'updatedAt'
+        ]) &&
+        data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 &&
+        data.ownerId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.ownerId == request.auth.uid &&
+        data.txHash is string && data.txHash.size() >= 10 && data.txHash.size() <= 80 &&
+        data.txHash.matches('^0x[a-fA-F0-9]+$') &&
+        data.blockHeight is int && data.blockHeight >= 0 &&
+        data.sourceEntity is string && data.sourceEntity.size() >= 2 && data.sourceEntity.size() <= 80 &&
+        data.destinationEntity is string && data.destinationEntity.size() >= 2 && data.destinationEntity.size() <= 80 &&
+        (data.amountUsd is int || data.amountUsd is float) && data.amountUsd >= 0 &&
+        data.assetSymbol is string && data.assetSymbol in ['USDC', 'BTC', 'ETH', 'USDP', 'T-BILL'] &&
+        data.riskLevel is string && data.riskLevel in ['CRITICAL', 'WARNING', 'NOMINAL'] &&
+        data.riskScore is int && data.riskScore >= 0 && data.riskScore <= 100 &&
+        data.status is string && data.status in ['PENDING_AUDIT', 'QUARANTINED', 'SETTLED', 'OVERRIDDEN'] &&
+        data.threatVector is string && data.threatVector.size() >= 2 && data.threatVector.size() <= 160 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // Blueprint Validation: ForensicReport
+    function isValidForensicReport(data) {
+      return data.keys().hasAll(['ownerId', 'txHash', 'queryPrompt', 'verdict', 'summary', 'createdAt']) &&
+        data.keys().hasOnly(['ownerId', 'txHash', 'queryPrompt', 'verdict', 'summary', 'createdAt']) &&
+        data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 &&
+        data.ownerId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.ownerId == request.auth.uid &&
+        data.txHash is string && data.txHash.size() >= 10 && data.txHash.size() <= 80 &&
+        data.txHash.matches('^0x[a-fA-F0-9]+$') &&
+        data.queryPrompt is string && data.queryPrompt.size() >= 4 && data.queryPrompt.size() <= 500 &&
+        data.verdict is string && data.verdict in ['CRITICAL_THREAT', 'ELEVATED_RISK', 'CLEARED_SETTLEMENT'] &&
+        data.summary is string && data.summary.size() >= 10 && data.summary.size() <= 2000 &&
+        data.createdAt is timestamp;
+    }
+
+    // Collection: /users/{userId}
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && userId == request.auth.uid;
+      allow list: if false;
+      allow create: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isValidUserProfile(incoming(), userId) &&
+        incoming().clearanceTier == 'L1_ANALYST' &&
+        incoming().createdAt == request.time;
+      allow update: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isValidUserProfile(incoming(), userId) &&
+        existing().uid == request.auth.uid &&
+        incoming().uid == existing().uid &&
+        incoming().clearanceTier == existing().clearanceTier &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['displayName']);
+      allow delete: if false;
+    }
+
+    // Collection: /ledger_entries/{entryId}
+    match /ledger_entries/{entryId} {
+      allow get: if isSignedIn() && isValidId(entryId) && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow create: if isVerifiedUser() &&
+        isValidId(entryId) &&
+        isValidLedgerEntry(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() &&
+        isValidId(entryId) &&
+        isValidLedgerEntry(incoming()) &&
+        existing().ownerId == request.auth.uid &&
+        existing().status != 'SETTLED' &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().txHash == existing().txHash &&
+        incoming().blockHeight == existing().blockHeight &&
+        incoming().sourceEntity == existing().sourceEntity &&
+        incoming().destinationEntity == existing().destinationEntity &&
+        incoming().amountUsd == existing().amountUsd &&
+        incoming().assetSymbol == existing().assetSymbol &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          // Action 1: Status transition (Quarantine, Settle, Override)
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) ||
+          // Action 2: Forensic Risk Re-classification
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'riskLevel', 'riskScore', 'threatVector', 'updatedAt'])
+        );
+      allow delete: if isVerifiedUser() &&
+        isValidId(entryId) &&
+        existing().ownerId == request.auth.uid &&
+        existing().status != 'SETTLED';
+    }
+
+    // Collection: /forensic_reports/{reportId}
+    match /forensic_reports/{reportId} {
+      allow get: if isSignedIn() && isValidId(reportId) && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow create: if isVerifiedUser() &&
+        isValidId(reportId) &&
+        isValidForensicReport(incoming()) &&
+        incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isVerifiedUser() &&
+        isValidId(reportId) &&
+        existing().ownerId == request.auth.uid;
+    }
+  }
+}

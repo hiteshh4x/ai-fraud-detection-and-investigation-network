@@ -1,0 +1,181 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Public analyst identity metadata for Apex Security & Ledger.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the user."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Display name of the security analyst."
+        },
+        "clearanceTier": {
+          "type": "string",
+          "enum": ["L1_ANALYST", "L2_RESPONDER", "L3_ARCHITECT"],
+          "description": "Operational clearance tier."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp."
+        }
+      },
+      "required": ["uid", "displayName", "clearanceTier", "createdAt"]
+    },
+    "LedgerEntry": {
+      "title": "LedgerEntry",
+      "description": "Cryptographic settlement ledger record and threat vector telemetry.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Authenticated UID of the analyst who recorded or owns this entry."
+        },
+        "txHash": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 80,
+          "pattern": "^0x[a-fA-F0-9]+$",
+          "description": "Hexadecimal transaction hash."
+        },
+        "blockHeight": {
+          "type": "integer",
+          "description": "Ledger block height."
+        },
+        "sourceEntity": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80,
+          "description": "Originating vault, institutional desk, or smart contract."
+        },
+        "destinationEntity": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80,
+          "description": "Receiving counterparty or settlement bridge."
+        },
+        "amountUsd": {
+          "type": "number",
+          "description": "Settlement value in USD."
+        },
+        "assetSymbol": {
+          "type": "string",
+          "enum": ["USDC", "BTC", "ETH", "USDP", "T-BILL"],
+          "description": "Settlement asset ticker."
+        },
+        "riskLevel": {
+          "type": "string",
+          "enum": ["CRITICAL", "WARNING", "NOMINAL"],
+          "description": "Computed threat intelligence classification."
+        },
+        "riskScore": {
+          "type": "integer",
+          "description": "Deterministic risk score from 0 to 100."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["PENDING_AUDIT", "QUARANTINED", "SETTLED", "OVERRIDDEN"],
+          "description": "Current operational state of the ledger entry."
+        },
+        "threatVector": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 160,
+          "description": "Identified threat signature or settlement classification."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Immutable creation server timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last modification server timestamp."
+        }
+      },
+      "required": [
+        "ownerId",
+        "txHash",
+        "blockHeight",
+        "sourceEntity",
+        "destinationEntity",
+        "amountUsd",
+        "assetSymbol",
+        "riskLevel",
+        "riskScore",
+        "status",
+        "threatVector",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ForensicReport": {
+      "title": "ForensicReport",
+      "description": "High-thinking AI forensic threat report linked to a ledger entry or query.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Authenticated UID of the analyst who generated the report."
+        },
+        "txHash": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 80,
+          "pattern": "^0x[a-fA-F0-9]+$",
+          "description": "Target transaction hash."
+        },
+        "queryPrompt": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 500,
+          "description": "Forensic investigation query."
+        },
+        "verdict": {
+          "type": "string",
+          "enum": ["CRITICAL_THREAT", "ELEVATED_RISK", "CLEARED_SETTLEMENT"],
+          "description": "High-thinking forensic verdict."
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 2000,
+          "description": "Executive forensic synthesis."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Immutable creation server timestamp."
+        }
+      },
+      "required": ["ownerId", "txHash", "queryPrompt", "verdict", "summary", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Public analyst profile keyed by Firebase Auth UID (no PII stored)."
+    },
+    "/ledger_entries/{entryId}": {
+      "schema": { "$ref": "#/entities/LedgerEntry" },
+      "description": "Cryptographic settlement ledger entries owned by authenticated security analysts."
+    },
+    "/forensic_reports/{reportId}": {
+      "schema": { "$ref": "#/entities/ForensicReport" },
+      "description": "Saved deep-thinking forensic intelligence reports owned by authenticated analysts."
+    }
+  }
+}
